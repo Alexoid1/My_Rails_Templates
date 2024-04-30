@@ -1,7 +1,7 @@
 =begin
-Template Name: Kickoff - Tailwind CSS
-Author: Andy Leverenz
-Author URI: https://web-crunch.com
+Template Name: Tailwind CSS
+Author: Pablo Zambranp
+Author URI: https://pablo-zambrano.netlify.app/
 Instructions: $ rails new myapp -d <postgresql, mysql, sqlite3> -m template.rb
 =end
 
