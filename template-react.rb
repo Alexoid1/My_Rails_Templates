@@ -2,7 +2,7 @@
 Template Name: React
 Author: Pablo Zambranp
 Author URI: https://pablo-zambrano.netlify.app/
-Instructions: $ rails new myapp -d <postgresql, mysql, sqlite3> -m template.rb
+Instructions: $ rails new myapp -d <postgresql, mysql, sqlite3> -m template.rb -j esbuild -d postgresql -T
 =end
 
 def source_paths
@@ -12,10 +12,11 @@ def source_paths
   def add_gems
     gem 'devise'
     gem 'friendly_id'
-
-
+    gem 'foreman'
+    gem 'rack-cors'
     gem 'sidekiq'
     gem 'stripe'
+    gem 'bcrypt'
 
   end
   
@@ -39,6 +40,8 @@ def source_paths
   
     # Create Devise User
     generate :devise, "User", "first_name", "last_name", "admin:boolean"
+
+
   
     # set admin boolean to false by default
     in_root do
@@ -158,7 +161,22 @@ def source_paths
 
     JSX
 
-    # After install react this are the initial setting
+    cors_con= <<-RUBY
+    Rails.application.config.middleware.insert_before 0, Rack::Cors do
+      allow do
+        origins 'http://localhost:3000'
+        resource '*', headers: :any, methods: [:get, :post, :patch, :put], credentials: true
+      end
+    end
+    RUBY
+
+    session_store =<<-RUBY
+    Rails.application.config.session_store :cookie_store, key: "_authentication_app", domain:"localhost:3000"
+
+
+    RUBY
+
+    # After install react this are the initial setting =========
     in_root do
         view = Dir.glob("app/views/homepage/index.html.erb")
         # Replacing all content from file with empty
@@ -189,6 +207,28 @@ def source_paths
 
 
     end
+    # =====================================================================
+
+
+
+    # Rails API initial settings =============================================
+
+    in_root do
+   
+    
+      # Create file cors.rb
+      create_file "config/initializers/cors.rb"
+      # Create file session_store.rb
+      create_file "config/initializers/session_store.rb"
+      # Insert content into cors.rb
+      insert_into_file "config/initializers/cors.rb", "#{cors_con}"
+      # Insert content into session_store.rb
+      insert_into_file "config/initializers/session_store.rb", "#{session_store}"
+   
+
+
+
+  end
 
 
   
