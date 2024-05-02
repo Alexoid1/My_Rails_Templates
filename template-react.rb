@@ -17,7 +17,7 @@ def source_paths
     gem 'sidekiq'
     gem 'stripe'
     gem 'bcrypt'
-
+    gem 'jsonapi-serializer'
   end
   
 
@@ -33,23 +33,19 @@ def source_paths
     generate "devise:install"
   
     # Configure Devise
-    environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3000 }",
+    environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3001 }",
                 env: 'development'
   
     route "root to: 'homepage#index'"
   
     # Create Devise User
-    generate :devise, "User", "first_name", "last_name", "admin:boolean"
+    generate :devise, "User", "name", "admin:boolean"
 
-
-  
     # set admin boolean to false by default
     in_root do
       migration = Dir.glob("db/migrate/*").max_by{ |f| File.mtime(f) }
       gsub_file migration, /:admin/, ":admin, default: false"
     end
-  
-    # name_of_person gem
     
   end
 
@@ -172,9 +168,9 @@ def source_paths
 
     session_store =<<-RUBY
     Rails.application.config.session_store :cookie_store, key: "_authentication_app", domain:"localhost:3000"
-
-
     RUBY
+
+
 
     # After install react this are the initial setting =========
     in_root do
@@ -206,12 +202,15 @@ def source_paths
 
 
 
-    end
+      end
     # =====================================================================
 
 
 
     # Rails API initial settings =============================================
+
+    rails_command "g devise:controllers users -c sessions registrations"
+    rails_command "generate serializer user id email name"
 
     in_root do
    
@@ -224,14 +223,29 @@ def source_paths
       insert_into_file "config/initializers/cors.rb", "#{cors_con}"
       # Insert content into session_store.rb
       insert_into_file "config/initializers/session_store.rb", "#{session_store}"
+      # uncoment line
+      uncomment_lines "config/initializers/devise.rb", /config.navigational_formats/
+      # Replacing all content
+      devise_config = Dir.glob("config/initializers/devise.rb")
+      gsub_file devise_config[0], /config.navigational_formats = \['\*\/\*', :html, :turbo_stream\]/, "config.navigational_formats = []"
+
+      port_puma = Dir.glob("config/puma.rb")
+      gsub_file port_puma[0], /port ENV.fetch\("PORT"\) \{ 3000 \}/, 'port ENV.fetch("PORT") { 3001 }'
+      # Insert in controllers
+      insert_into_file "app/controllers/users/sessions_controller.rb", "\n  respond_to :json", after: "Devise::SessionsController"
+      insert_into_file "app/controllers/users/registrations_controller.rb", "\n  respond_to :json", after: "Devise::RegistrationsController"
+      
    
+    
 
 
-
-  end
+    end 
 
 
   
+    
+
+
     # Migrate
     rails_command "db:create"
     rails_command "db:migrate"
@@ -247,3 +261,4 @@ def source_paths
     say "Then run:"
     say "$ ./bin/dev", :green
   end
+
