@@ -4,7 +4,7 @@ Author: Pablo Zambranp
 Author URI: https://pablo-zambrano.netlify.app/
 Instructions: $ rails new myapp -d <postgresql, mysql, sqlite3> -m template.rb -j esbuild -d postgresql -T
 =end
-
+rails_api_port=3001
 def source_paths
     [File.expand_path(File.dirname(__FILE__))]
   end
@@ -33,7 +33,7 @@ def source_paths
     generate "devise:install"
   
     # Configure Devise
-    environment "config.action_mailer.default_url_options = { host: 'localhost', port: 3001 }",
+    environment "config.action_mailer.default_url_options = { host: 'localhost', port: #{rails_api_port} }",
                 env: 'development'
   
     route "root to: 'homepage#index'"
@@ -160,14 +160,66 @@ def source_paths
     cors_con= <<-RUBY
     Rails.application.config.middleware.insert_before 0, Rack::Cors do
       allow do
-        origins 'http://localhost:3000'
+        origins "http://localhost:#{rails_api_port}"
         resource '*', headers: :any, methods: [:get, :post, :patch, :put], credentials: true
       end
     end
     RUBY
 
     session_store =<<-RUBY
-    Rails.application.config.session_store :cookie_store, key: "_authentication_app", domain:"localhost:3000"
+    Rails.application.config.session_store :cookie_store, key: "_authentication_app", domain:"localhost:#{rails_api_port}"
+    RUBY
+
+    devise_routes= <<-RUBY
+    , path: '', path_names: {
+      sign_in: 'login',
+      sign_out: 'logout',
+      registration: 'signup'
+    },
+    controllers: {
+      sessions: 'users/sessions',
+      registrations: 'users/registrations'
+    }
+    RUBY
+
+    application_controller=<<-RUBY
+    before_action :configure_permitted_parameters, if: :devise_controller?
+    protected
+    def configure_permitted_parameters
+      devise_parameter_sanitizer.permit(:sign_up, keys: %i[name avatar])
+      devise_parameter_sanitizer.permit(:account_update, keys: %i[name avatar])
+    end
+    RUBY
+
+    registration_controller=<<-RUBY
+    respond_to :json
+    private
+
+    def respond_with(current_user, _opts = {})
+      if resource.persisted?
+        render json: {
+          status: {code: 200, message: 'Signed up successfully.'},
+          data: UserSerializer.new(current_user).serializable_hash[:data][:attributes]
+        }
+      else
+        render json: {
+          status: {message: "User couldn't be created successfully. #{current_user.errors.full_messages.to_sentence}"}
+        }, status: :unprocessable_entity
+      end
+    end
+    RUBY
+
+    session_controller=<<-RUBY
+    respond_to :json
+    private
+    def respond_with(current_user, _opts = {})
+      render json: {
+        status: { 
+          code: 200, message: 'Logged in successfully.',
+          data: { user: UserSerializer.new(current_user).serializable_hash[:data][:attributes] }
+        }
+      }, status: :ok
+    end
     RUBY
 
 
@@ -214,7 +266,9 @@ def source_paths
 
     in_root do
    
-    
+      # Create empty directories
+      empty_directory "app/controllers/api"
+      empty_directory "app/controllers/api/v1"
       # Create file cors.rb
       create_file "config/initializers/cors.rb"
       # Create file session_store.rb
@@ -230,28 +284,22 @@ def source_paths
       gsub_file devise_config[0], /config.navigational_formats = \['\*\/\*', :html, :turbo_stream\]/, "config.navigational_formats = []"
 
       port_puma = Dir.glob("config/puma.rb")
-      gsub_file port_puma[0], /port ENV.fetch\("PORT"\) \{ 3000 \}/, 'port ENV.fetch("PORT") { 3001 }'
+      gsub_file port_puma[0], /port ENV.fetch\("PORT"\) \{ 3000 \}/, "port ENV.fetch("PORT") { #{rails_api_port} }"
       # Insert in controllers
-      insert_into_file "app/controllers/users/sessions_controller.rb", "\n  respond_to :json", after: "Devise::SessionsController"
-      insert_into_file "app/controllers/users/registrations_controller.rb", "\n  respond_to :json", after: "Devise::RegistrationsController"
-      
-   
-    
+      insert_into_file "app/controllers/users/sessions_controller.rb", "\n  #{session_controller}", after: "Devise::SessionsController"
+      insert_into_file "app/controllers/users/registrations_controller.rb", "\n  #{registration_controller}", after: "Devise::RegistrationsController"
+      # Insert routes devise
+      insert_into_file "config/routes.rb", "#{devise_routes}", after: "devise_for :users"
+      # Insert content in Application controller
+      insert_into_file "app/controllers/application_controller.rb", "\n\n#{application_controller}", after: "ActionController::Base"
 
 
     end 
 
-
-  
-    
-
-
     # Migrate
     rails_command "db:create"
     rails_command "db:migrate"
-  
-
-  
+   
     say
     say "React-rails init app successfully created! 👍", :green
     say
